@@ -9,8 +9,17 @@
     "skipLibCheck": true,
     "strict": true,
     "moduleResolution": "node",
-    "types": ["node"]
+    "types": ["node"],
+    "baseUrl": "../../",
+    "paths": {
+      "@fndr/types": ["dist/libs/types/src/index.d.ts"]
+    }
   },
-  "include": ["src/**/*.ts", "../../libs/types/src/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules"],
+  "references": [
+    {
+      "path": "../../libs/types"
+    }
+  ]
 }

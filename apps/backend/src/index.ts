@@ -48,7 +48,19 @@ app.post('/api/process', async (req, res) => {
 
     switch (countyId) {
       case 'fayette-ky':
-        results = await processFayette(inputs as FayetteInputs);
+        // Validate and cast inputs for Fayette
+        if (!inputs.startDate || !inputs.endDate) {
+          return res.status(400).json({
+            success: false,
+            error: 'Missing required fields: startDate and endDate are required',
+          } as ProcessResponse);
+        }
+        results = await processFayette({
+          startDate: inputs.startDate,
+          endDate: inputs.endDate,
+          cookie: inputs.cookie,
+          ignoreAddresses: inputs.ignoreAddresses ? (typeof inputs.ignoreAddresses === 'string' ? JSON.parse(inputs.ignoreAddresses) : inputs.ignoreAddresses) : undefined,
+        } as FayetteInputs);
         break;
       case 'clark-nv':
         results = await processClark(inputs as ClarkInputs);
@@ -73,11 +85,11 @@ app.post('/api/process', async (req, res) => {
   }
 });
 
-// Only start server if not imported as a module
-if (require.main === module) {
-  app.listen(PORT, () => {
-    console.log(`Backend server running on port ${PORT}`);
-  });
-}
+// Start server when this file is executed
+app.listen(PORT, () => {
+  console.log(`Backend server running on port ${PORT}`);
+  console.log(`Health check: http://localhost:${PORT}/health`);
+  console.log(`API endpoint: http://localhost:${PORT}/api/counties`);
+});
 
 export default app;

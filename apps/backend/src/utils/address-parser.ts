@@ -1,7 +1,8 @@
-import { PDFParse } from 'pdf-parse';
 import axios, { AxiosRequestConfig } from 'axios';
 import fs from 'fs';
-import pdfParse from 'pdf-parse';
+// Use require for CommonJS module compatibility with pdf-parse
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const pdfParse: (buffer: Buffer) => Promise<{ text: string }> = require('pdf-parse');
 
 export interface AddressParserOptions {
   /**
@@ -99,10 +100,12 @@ export async function parseAddressesFromUrl(
       return filterIgnoredAddresses(addresses, options.ignoreAddresses);
     }
 
-    // Otherwise, try using the new PDFParse API for URL parsing (no auth needed)
-    const parser = new PDFParse({ url });
-    const result = await parser.getText();
-    const text = result.text;
+    // For URL parsing without auth, download first then parse
+    const pdfResp = await axios.get(url, {
+      responseType: 'arraybuffer',
+    });
+    const pdfData = await pdfParse(Buffer.from(pdfResp.data));
+    const text = pdfData.text;
 
     const addresses = extractAddressesFromText(text);
     return filterIgnoredAddresses(addresses, options.ignoreAddresses);
