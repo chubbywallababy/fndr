@@ -3,6 +3,7 @@ const cheerio = require("cheerio");
 const fs = require("fs");
 const path = require("path");
 const {URL} = require("url");
+const {PDFParse} = require("pdf-parse");
 
 // URL for the search POST request
 const URL_SEARCH = "https://fayettedeeds.com/landrecords/index.php";
@@ -13,9 +14,7 @@ searchType=davidson&show_pick_list=off&party_type=&search_type=Both&grantor_last
 `.trim();
 
 // === Session cookie from your working cURL ===
-const COOKIE = "PHPSESSID=8vn4atpgf78nf9fucngloojrhn";
-
-const pdfParse = require("pdf-parse");
+const COOKIE = "PHPSESSID=8vn4atpgf78nf9fucngloojrhn";  
 
 // Function to extract addresses from a PDF file
 async function extractAddressesFromPDF(filePath) {
