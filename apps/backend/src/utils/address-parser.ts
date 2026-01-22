@@ -1,3 +1,8 @@
+// Polyfill for pdfjs-dist in Node.js environment
+if (typeof DOMMatrix === 'undefined') {
+  global.DOMMatrix = require('canvas').DOMMatrix;
+}
+
 import axios, { AxiosRequestConfig } from 'axios';
 import fs from 'fs';
 // Use require for CommonJS module compatibility with pdf-parse

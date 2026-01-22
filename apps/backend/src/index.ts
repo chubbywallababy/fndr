@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { processFayette } from './states/kentucky/fayette';
 import { processClark } from './states/nevada/clark';
-import { COUNTY_CONFIGS, ProcessRequest, ProcessResponse, CountyId, FayetteInputs, ClarkInputs } from '@fndr/types';
+import { COUNTY_CONFIGS, ProcessRequest, ProcessResponse, CountyId, FayetteInputs, ClarkInputs } from './types';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
