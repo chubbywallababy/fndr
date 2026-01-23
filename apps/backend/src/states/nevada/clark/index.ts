@@ -1,7 +1,7 @@
 // Dummy implementation for Clark County, Nevada
 // This will be implemented later
 
-import { ClarkInputs } from '@fndr/types';
+import { ClarkInputs } from '../../../types';
 
 export interface ClarkResult {
   id: string;

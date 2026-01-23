@@ -1,7 +1,7 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { parseAddressesFromUrl } from '../../../utils/address-parser';
-import { FayetteInputs } from '@fndr/types';
+import { FayetteInputs } from '../../../types';
 
 export interface FayetteResult {
   id: string;
