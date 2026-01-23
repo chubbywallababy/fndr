@@ -13,6 +13,8 @@ export async function publishToSlack({
 }: SlackMessageOptions): Promise<void> {
   const webhookUrl = process.env.SLACK_WEBHOOK_URL;
 
+  console.log('[cron] Slack webhook URL:', webhookUrl);
+
   if (!webhookUrl) {
     throw new Error('SLACK_WEBHOOK_URL is not set');
   }
