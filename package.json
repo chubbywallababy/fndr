@@ -10,9 +10,11 @@
     "start:frontend": "nx serve frontend",
     "start": "concurrently -n \"BACKEND,FRONTEND\" -c \"blue,green\" \"nx serve backend\" \"nx serve frontend\"",
     "build:backend": "nx build backend",
+    "build:cron": "nx build backend",
     "build:frontend": "nx build frontend",
     "build:netlify": "npm run build:frontend && npm run build:backend",
-    "dev:netlify": "netlify dev"
+    "dev:netlify": "netlify dev",
+    "cron": "node dist/apps/backend/src/cron/index.js"
   },
   "private": true,
   "dependencies": {

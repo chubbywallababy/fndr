@@ -1,0 +1,36 @@
+# .github/workflows/cronjob.yml
+name: Scheduled Cron Job
+
+# Trigger on a schedule (cron) or manually
+on:
+  schedule:
+    # Runs every day at 2:00 AM UTC
+    - cron: "0 2 * * *"
+  workflow_dispatch: # allows manual run from GitHub UI
+
+jobs:
+  run-cron:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout your repository
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Set up Node.js
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20.11.0' # change to your Node version
+
+      # Install dependencies
+      - name: Install dependencies
+        run: npm install
+
+      # Build the cron job
+      - name: Build cron job
+        run: npm run build:cron
+
+      # Run the cron job
+      - name: Run cron job
+        run: npm run cron
