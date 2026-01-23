@@ -234,7 +234,11 @@ export async function parseAddressesFromUrl(
     throw new Error(`Failed to parse PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
   } finally {
     // Optionally clean up the PDF file
-    // fs.unlinkSync(pdfPath);
+    try {
+      fs.unlinkSync(pdfPath);
+    } catch (error) {
+      console.warn(`Failed to clean up PDF file ${pdfPath}:`, error);
+    }
   }
 }
 
