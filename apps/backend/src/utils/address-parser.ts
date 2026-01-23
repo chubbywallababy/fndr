@@ -24,10 +24,64 @@ export interface AddressParserOptions {
   minTextLength?: number;
 }
 
-const ADDRESS_REGEX = /\d{1,6}\s+[A-Za-z0-9.\- ]+\s+(?:St|Street|Ave|Avenue|Rd|Road|Blvd|Boulevard|Ln|Lane|Dr|Drive|Ct|Court|Way|Terrace|Pl|Place|Circle|Cir)\b/gi;
+/**
+ * Enhanced address regex that captures:
+ * - Street number and name with common abbreviations
+ * - Optional suite/unit/apartment numbers
+ * - City, State ZIP (optional but commonly present)
+ */
+const ADDRESS_PATTERNS = [
+  // Pattern 1: Full address with city, state, zip (handles commas)
+  // Example: "5136 Old Versailles Road, Lexington, KY 40510"
+  /\d{1,6}\s+[A-Za-z0-9.\-\s]+?\s+(?:St\.?|Street|Ave\.?|Avenue|Rd\.?|Road|Blvd\.?|Boulevard|Ln\.?|Lane|Dr\.?|Drive|Ct\.?|Court|Way|Terrace|Pl\.?|Place|Circle|Cir\.?|Parkway|Pkwy\.?|Highway|Hwy\.?)(?:[\s,]+(?:Suite|Ste\.?|Unit|Apt\.?|#)\s*[A-Za-z0-9\-]+)?[\s,]+[A-Za-z\s]+,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?/gi,
+  
+  // Pattern 2: Street address with optional suite/unit (no city/state)
+  // Example: "05-C South 4th St." or "325 West Main Street, Suite 2300"
+  /\d{1,6}(?:-[A-Z])?\s+(?:North|South|East|West|N\.?|S\.?|E\.?|W\.?)?\s*[A-Za-z0-9.\-\s]+?\s+(?:St\.?|Street|Ave\.?|Avenue|Rd\.?|Road|Blvd\.?|Boulevard|Ln\.?|Lane|Dr\.?|Drive|Ct\.?|Court|Way|Terrace|Pl\.?|Place|Circle|Cir\.?|Parkway|Pkwy\.?|Highway|Hwy\.?)(?:[\s,]+(?:Suite|Ste\.?|Unit|Apt\.?|#)\s*[A-Za-z0-9\-]+)?/gi,
+];
 
-function normalizeAddress(address: string): string {
-  return address.trim().toLowerCase().replace(/\s+/g, ' ');
+/**
+ * Normalizes text by replacing newlines and excessive whitespace
+ * More efficient for large strings than multiple replace calls
+ */
+function normalizeTextForAddressExtraction(text: string): string {
+  // Replace all newlines with spaces, then normalize multiple spaces to single space
+  // This is efficient even for large strings (O(n) single pass)
+  return text.replace(/[\r\n]+/g, ' ').replace(/\s{2,}/g, ' ');
+}
+
+/**
+ * Cleans up extracted address by removing extra whitespace and normalizing format
+ */
+function cleanAddress(address: string): string {
+  return address
+    .replace(/\s{2,}/g, ' ')  // Multiple spaces to single space
+    .replace(/\s*,\s*/g, ', ') // Normalize comma spacing
+    .trim();
+}
+
+/**
+ * Extracts addresses from text, handling multiple formats and multi-line addresses
+ */
+function extractAddressesFromText(text: string): string[] {
+  // Normalize the text first - this handles multi-line addresses
+  const normalizedText = normalizeTextForAddressExtraction(text);
+  
+  const foundAddresses = new Set<string>();
+  
+  // Try each pattern
+  for (const pattern of ADDRESS_PATTERNS) {
+    const matches = normalizedText.match(pattern);
+    if (matches) {
+      matches.forEach(match => {
+        const cleaned = cleanAddress(match);
+        foundAddresses.add(cleaned);
+      });
+    }
+  }
+  
+  // Convert Set to Array and return
+  return Array.from(foundAddresses);
 }
 
 function filterIgnoredAddresses(
@@ -37,20 +91,11 @@ function filterIgnoredAddresses(
   if (!ignoreList || ignoreList.length === 0) {
     return addresses;
   }
-  const normalizedIgnoreList = ignoreList.map(normalizeAddress);
+  const normalizedIgnoreList = ignoreList.map(normalizeTextForAddressExtraction);
   return addresses.filter((addr) => {
-    const normalized = normalizeAddress(addr);
+    const normalized = normalizeTextForAddressExtraction(addr);
     return !normalizedIgnoreList.includes(normalized);
   });
-}
-
-function extractAddressesFromText(text: string): string[] {
-  const matches = text.match(ADDRESS_REGEX);
-  if (!matches) {
-    return [];
-  }
-  const uniqueAddresses = [...new Set(matches.map((addr) => addr.trim()))];
-  return uniqueAddresses;
 }
 
 /**
@@ -137,8 +182,9 @@ export async function parseAddressesFromUrl(
       responseType: 'arraybuffer',
     });
     
-    // fs.writeFileSync(pdfPath, pdfResp.data);
-    // console.log(`PDF saved to ${pdfPath}`);
+    // TODO - refactor so we don't have to download the PDF every time
+    fs.writeFileSync(pdfPath, pdfResp.data);
+    console.log(`PDF saved to ${pdfPath}`);
 
     let text = '';
     let usedOCR = false;
