@@ -8,6 +8,8 @@ Welcome! This guide will walk you through setting up and running this React appl
 
 Before you begin, you'll need to install a few tools on your computer. These are the same tools that professional developers use.
 
+Make sure you install OCR depedencies here - https://github.com/yakovmeister/pdf2image/blob/HEAD/docs/gm-installation.md
+
 ### For Mac Users
 
 You'll need:

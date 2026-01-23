@@ -46,6 +46,7 @@ fndr/
 
 - Node.js 20+
 - npm
+- Make sure you install OCR depedencies here - https://github.com/yakovmeister/pdf2image/blob/HEAD/docs/gm-installation.md
 
 ### Installation
 
