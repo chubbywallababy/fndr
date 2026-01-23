@@ -14,7 +14,8 @@ on:
 jobs:
   run-cron:
     runs-on: ubuntu-latest
-
+    env:
+      SLACK_WEBHOOK_URL: https://hooks.slack.com/services/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
     steps:
       # Checkout your repository
       - name: Checkout repository
