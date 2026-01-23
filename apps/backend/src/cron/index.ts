@@ -4,7 +4,7 @@ import { publishToSlack } from '../notifications/slack';
 import { formatAddressesMarkdown } from '../notifications/markdown';
 
 function getDateRange() {
-  const lookbackDays = Number(process.env.LOOKBACK_DAYS ?? 1);
+  const lookbackDays = Number(process.env.LOOKBACK_DAYS ?? 10);
 
   const end = new Date();
   const start = new Date();
