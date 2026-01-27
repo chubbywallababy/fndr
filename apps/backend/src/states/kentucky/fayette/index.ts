@@ -1,11 +1,11 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
-import { parseAddressesFromUrl } from '../../../utils/address-parser';
+import { parseAddressesFromUrl, ParsedAddress } from '../../../utils/address-parser';
 import { FayetteInputs } from '../../../types';
 
 export interface FayetteResult {
   id: string;
-  addresses: string[];
+  addresses: ParsedAddress[];
   pdfUrl?: string;
 }
 
@@ -22,7 +22,22 @@ function buildFormData(inputs: FayetteInputs): string {
 }
 
 export async function processFayette(inputs: FayetteInputs): Promise<FayetteResult[]> {
-  const results: FayetteResult[] = [];
+  const results: /* `FayetteResult` is defining an interface in TypeScript that specifies the structure
+  of the result object returned by the `processFayette` function. It includes the
+  following properties:
+  - `id`: a string representing the unique identifier of the result
+  - `addresses`: an array of strings representing addresses extracted from the PDF
+  associated with the result
+  - `pdfUrl` (optional): a string representing the URL of the PDF associated with the
+  result */
+  /* `FayetteResult` is defining the structure of the result object that will be
+  returned by the `processFayette` function. It includes the following properties:
+  - `id`: A string representing the unique identifier of the result.
+  - `addresses`: An array of strings representing the addresses extracted from the
+  PDF associated with the result.
+  - `pdfUrl`: An optional string representing the URL of the PDF associated with the
+  result. */
+  FayetteResult[] = [];
   const cookie = inputs.cookie || DEFAULT_COOKIE;
   const formData = buildFormData(inputs);
 

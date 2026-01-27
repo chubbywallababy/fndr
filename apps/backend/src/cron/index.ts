@@ -1,7 +1,6 @@
 // apps/backend/src/cron/run-email-scan.ts
 import { processFayette } from '../states/kentucky/fayette';
 import { publishToSlack } from '../notifications/slack';
-import { formatAddressesMarkdown } from '../notifications/markdown';
 
 function getDateRange() {
   const lookbackDays = Number(process.env.LOOKBACK_DAYS ?? 3);
@@ -26,20 +25,40 @@ async function main() {
 
   console.log(`[cron] Scan complete. Found ${results.length} items`);
 
-  const markdown = formatAddressesMarkdown(results.flatMap((result) => result.addresses));
+  const allAddresses = results.flatMap((result) => result.addresses);
+
+  // Group by quality
+  const grouped = {
+    high: allAddresses.filter(a => a.quality === "high"),
+    medium: allAddresses.filter(a => a.quality === "medium"),
+    low: allAddresses.filter(a => a.quality === "low"),
+  };
+  
+  // Build markdown with section headers
+  const markdown = `
+  *High quality addresses (${grouped.high.length})*
+  ${grouped.high.map(a => `• ${a.cleaned}`).join("\n")}
+  
+  *Medium quality addresses (${grouped.medium.length})*
+  ${grouped.medium.map(a => `• ${a.cleaned}`).join("\n")}
+  
+  *Low quality / needs review (${grouped.low.length})*
+  ${grouped.low.map(a => `• ${a.cleaned}`).join("\n")}
+  `.trim();
+  
   await publishToSlack({
     text: markdown,
     blocks: [
       {
-        type: 'section',
+        type: "section",
         text: {
-          type: 'mrkdwn',
+          type: "mrkdwn",
           text: markdown,
         },
       },
     ],
   });
-
+  
   console.log(`[cron] Notification sent to Slack`);
 
 }

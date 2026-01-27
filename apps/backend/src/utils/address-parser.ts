@@ -13,81 +13,165 @@ import os from 'os';
 export interface AddressParserOptions {
   ignoreAddresses?: string[];
   axiosConfig?: AxiosRequestConfig;
-  /**
-   * Force OCR even if text layer exists
-   */
   forceOCR?: boolean;
-  /**
-   * Minimum text length to consider PDF parsed successfully
-   * If text is shorter, will fall back to OCR
-   */
   minTextLength?: number;
 }
 
+export type AddressQuality = "high" | "medium" | "low";
+
+export interface ParsedAddress {
+  raw: string;
+  cleaned: string;
+  score: number;
+  quality: AddressQuality;
+  isLikelyAddress: boolean;
+  reasons: string[];
+}
+
 /**
- * Enhanced address regex that captures:
- * - Street number and name with common abbreviations
- * - Optional suite/unit/apartment numbers
- * - City, State ZIP (optional but commonly present)
+ * Enhanced address regex patterns (extraction only, not validation)
  */
 const ADDRESS_PATTERNS = [
-  // Pattern 1: Full address with city, state, zip (handles commas)
-  // Example: "5136 Old Versailles Road, Lexington, KY 40510"
+  // Full address with city, state, zip
   /\d{1,6}\s+[A-Za-z0-9.\-\s]+?\s+(?:St\.?|Street|Ave\.?|Avenue|Rd\.?|Road|Blvd\.?|Boulevard|Ln\.?|Lane|Dr\.?|Drive|Ct\.?|Court|Way|Terrace|Pl\.?|Place|Circle|Cir\.?|Parkway|Pkwy\.?|Highway|Hwy\.?)(?:[\s,]+(?:Suite|Ste\.?|Unit|Apt\.?|#)\s*[A-Za-z0-9\-]+)?[\s,]+[A-Za-z\s]+,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?/gi,
-  
-  // Pattern 2: Street address with optional suite/unit (no city/state)
-  // Example: "05-C South 4th St." or "325 West Main Street, Suite 2300"
+
+  // Street only (no city/state)
   /\d{1,6}(?:-[A-Z])?\s+(?:North|South|East|West|N\.?|S\.?|E\.?|W\.?)?\s*[A-Za-z0-9.\-\s]+?\s+(?:St\.?|Street|Ave\.?|Avenue|Rd\.?|Road|Blvd\.?|Boulevard|Ln\.?|Lane|Dr\.?|Drive|Ct\.?|Court|Way|Terrace|Pl\.?|Place|Circle|Cir\.?|Parkway|Pkwy\.?|Highway|Hwy\.?)(?:[\s,]+(?:Suite|Ste\.?|Unit|Apt\.?|#)\s*[A-Za-z0-9\-]+)?/gi,
 ];
 
 /**
  * Normalizes text by replacing newlines and excessive whitespace
- * More efficient for large strings than multiple replace calls
  */
-function normalizeTextForAddressExtraction(text: string): string {
-  // Replace all newlines with spaces, then normalize multiple spaces to single space
-  // This is efficient even for large strings (O(n) single pass)
-  return text.replace(/[\r\n]+/g, ' ').replace(/\s{2,}/g, ' ');
+function normalizeTextForAddressExtraction(text: ParsedAddress): ParsedAddress {
+  return {
+    ...text,
+    raw: text.raw.replace(/[\r\n]+/g, " ").replace(/\s{2,}/g, " "),
+    cleaned: text.cleaned.replace(/[\r\n]+/g, " ").replace(/\s{2,}/g, " "),
+  };
 }
 
 /**
- * Cleans up extracted address by removing extra whitespace and normalizing format
+ * Cleans extracted address
  */
 function cleanAddress(address: string): string {
   return address
-    .replace(/\s{2,}/g, ' ')  // Multiple spaces to single space
-    .replace(/\s*,\s*/g, ', ') // Normalize comma spacing
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s*,\s*/g, ", ")
     .trim();
 }
 
+/* ============================================================
+   Validation & scoring logic (NEW)
+   ============================================================ */
+
+const STREET_TYPE_REGEX =
+  /\b(st|street|rd|road|ave|avenue|blvd|boulevard|ln|lane|dr|drive|ct|court|way|terrace|pl|place|circle|cir|parkway|pkwy|highway|hwy)\b/i;
+
+const CITY_REGEX = /\bLexington\b/i;
+const STATE_REGEX = /\bKY\b|\bKentucky\b/i;
+const ZIP_REGEX = /\b\d{5}(?:-\d{4})?\b/;
+
 /**
- * Extracts addresses from text, handling multiple formats and multi-line addresses
+ * Common false-positive phrases from legal / narrative text
  */
-function extractAddressesFromText(text: string): string[] {
-  // Normalize the text first - this handles multi-line addresses
-  const normalizedText = normalizeTextForAddressExtraction(text);
-  
-  const foundAddresses = new Set<string>();
-  
-  // Try each pattern
-  for (const pattern of ADDRESS_PATTERNS) {
-    const matches = normalizedText.match(pattern);
-    if (matches) {
-      matches.forEach(match => {
-        const cleaned = cleanAddress(match);
-        foundAddresses.add(cleaned);
-      });
-    }
+const NON_ADDRESS_PATTERNS = [
+  /\bsouth of\b/i,
+  /\bnorth of\b/i,
+  /\beast of\b/i,
+  /\bwest of\b/i,
+  /\bcommonwealth\b/i,
+  /\bcircuit court\b/i,
+  /\bcase\b/i,
+  /\bfiled\b/i,
+  /\bplaintiff\b/i,
+  /\bdefendant\b/i,
+];
+
+/**
+ * Street number must appear near beginning
+ */
+const LEADING_NUMBER_REGEX = /^\s*\d{1,6}(\s|[A-Za-z])/;
+
+/**
+ * Scores an extracted string and determines if it is likely an address
+ */
+function scoreAddressCandidate(address: string): ParsedAddress {
+  const cleaned = cleanAddress(address);
+  const reasons: string[] = [];
+  let score = 0;
+
+  // Hard rejection
+  if (NON_ADDRESS_PATTERNS.some(r => r.test(cleaned))) {
+    return {
+      raw: address,
+      cleaned,
+      score: 0,
+      quality: "low",
+      isLikelyAddress: false,
+      reasons: ["matched_non_address_phrase"],
+    };
   }
-  
-  // Convert Set to Array and return
-  return Array.from(foundAddresses);
+
+  // Leading street number
+  if (LEADING_NUMBER_REGEX.test(cleaned)) {
+    score += 40;
+  } else {
+    reasons.push("no_leading_street_number");
+  }
+
+  // Street type
+  if (STREET_TYPE_REGEX.test(cleaned)) {
+    score += 30;
+  } else {
+    reasons.push("no_street_type");
+  }
+
+  // City
+  if (CITY_REGEX.test(cleaned)) score += 10;
+
+  // State
+  if (STATE_REGEX.test(cleaned)) score += 10;
+
+  // Zip
+  if (ZIP_REGEX.test(cleaned)) score += 10;
+
+  let quality: AddressQuality = "low";
+  if (score >= 80) quality = "high";
+  else if (score >= 50) quality = "medium";
+
+  return {
+    raw: address,
+    cleaned,
+    score,
+    quality,
+    isLikelyAddress: score >= 50,
+    reasons,
+  };
 }
 
+/**
+ * Extracts and validates addresses from text
+ */
+export function extractParsedAddressesFromText(text: string): ParsedAddress[] {
+  const parsedAddresses = scoreAddressCandidate(text);
+  const normalizedText = normalizeTextForAddressExtraction(parsedAddresses);
+  const foundAddresses = new Set<string>();
+
+  for (const pattern of ADDRESS_PATTERNS) {
+    const matches = normalizedText.raw.match(pattern);
+    if (matches) {
+      matches.forEach(match => foundAddresses.add(cleanAddress(match)));
+    }
+  }
+
+  return Array.from(foundAddresses).map(scoreAddressCandidate);
+}
+
+
 function filterIgnoredAddresses(
-  addresses: string[],
-  ignoreList?: string[]
-): string[] {
+  addresses: ParsedAddress[],
+  ignoreList?: ParsedAddress[]
+): ParsedAddress[] {
   if (!ignoreList || ignoreList.length === 0) {
     return addresses;
   }
@@ -172,7 +256,7 @@ export async function parseAddressesFromUrl(
   url: string,
   id: string,
   options: AddressParserOptions = {}
-): Promise<string[]> {
+): Promise<ParsedAddress[]> {
   const pdfPath = `${id}.pdf`;
   
   try {
@@ -222,10 +306,10 @@ export async function parseAddressesFromUrl(
     console.log(`Extracted text length: ${text.length} (OCR: ${usedOCR})`);
     console.log('Text sample:', text.substring(0, 300));
 
-    const addresses = extractAddressesFromText(text);
+    const addresses = extractParsedAddressesFromText(text);
     console.log(`Found ${addresses.length} addresses before filtering`);
     
-    const filtered = filterIgnoredAddresses(addresses, options.ignoreAddresses);
+    const filtered = filterIgnoredAddresses(addresses, options.ignoreAddresses?.map(scoreAddressCandidate));
     console.log(`Returning ${filtered.length} addresses after filtering`);
     
     return filtered;

@@ -1,7 +1,8 @@
 // apps/backend/src/notifications/markdown.ts
+import { ParsedAddress } from "../utils/address-parser";
 
 export function formatAddressesMarkdown(
-  addresses: string[],
+  addresses: ParsedAddress[],
   maxItems = 20
 ): string {
   if (addresses.length === 0) {
