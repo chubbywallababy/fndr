@@ -45,7 +45,7 @@ async function main() {
   *Low quality / needs review (${grouped.low.length})*
   ${grouped.low.map(a => `• ${a.cleaned}`).join("\n")}
   `.trim();
-  
+
   await publishToSlack({
     text: markdown,
     blocks: [
