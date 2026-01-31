@@ -14,7 +14,7 @@ export async function publishToSlack({
   const webhookUrl = process.env.FNDR_SLACK_WEBHOOK_URL;
 
   if (!webhookUrl) {
-    throw new Error('SLACK_WEBHOOK_URL is not set');
+    throw new Error('FNDR_SLACK_WEBHOOK_URL is not set');
   }
 
   const payload: Record<string, any> = {

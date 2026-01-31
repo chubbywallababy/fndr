@@ -1,4 +1,5 @@
 // apps/backend/src/cron/run-email-scan.ts
+import 'dotenv/config';
 import { processFayette } from '../states/kentucky/fayette';
 import { publishToSlack } from '../notifications/slack';
 

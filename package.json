@@ -10,11 +10,13 @@
     "start:frontend": "nx serve frontend",
     "start": "concurrently -n \"BACKEND,FRONTEND\" -c \"blue,green\" \"nx serve backend\" \"nx serve frontend\"",
     "build:backend": "nx build backend",
-    "build:cron": "nx build backend",
+    "build:cron": "esbuild apps/backend/src/cron/index.ts --bundle --platform=node --outfile=dist/cron.js --external:canvas --external:tesseract.js --external:pdf2pic",
     "build:frontend": "nx build frontend",
     "build:netlify": "npm run build:frontend && npm run build:backend",
     "dev:netlify": "netlify dev",
-    "cron": "node dist/apps/backend/src/cron/index.js"
+    "cron": "node dist/cron.js",
+    "deploy:cron": "npm run build:cron && ./scripts/deploy-cron.sh",
+    "setup:server": "./scripts/setup-server.sh"
   },
   "private": true,
   "dependencies": {
@@ -45,6 +47,7 @@
     "@typescript-eslint/parser": "^6.19.0",
     "@vitejs/plugin-react": "^4.2.1",
     "concurrently": "^9.2.1",
+    "esbuild": "^0.27.2",
     "eslint": "^8.56.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-react": "^7.33.2",
