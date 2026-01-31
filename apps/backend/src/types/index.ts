@@ -22,17 +22,38 @@ export interface CountyConfig {
   inputs: InputField[];
 }
 
+// ============================================================
+// Shared processing options (used by all counties)
+// ============================================================
+
+/**
+ * Options for PDF processing that can be shared across all county implementations
+ */
+export interface PdfProcessingOptions {
+  /** If true, PDFs will be saved to disk instead of deleted after processing. Defaults to false. */
+  savePdfs?: boolean;
+  /** Directory to save PDFs to. Defaults to './saved-pdfs' */
+  pdfOutputDir?: string;
+}
+
+/**
+ * Base inputs interface that all county-specific inputs should extend
+ */
+export interface BaseCountyInputs extends PdfProcessingOptions {
+  /** Optional array of addresses to ignore during processing */
+  ignoreAddresses?: string[];
+}
+
 // County-specific input types
-export interface FayetteInputs {
+export interface FayetteInputs extends BaseCountyInputs {
   startDate: string; // Format: MM/DD/YYYY
   endDate: string; // Format: MM/DD/YYYY
   cookie?: string; // Optional session cookie
-  ignoreAddresses?: string[]; // Optional array of addresses to ignore
 }
 
-export interface ClarkInputs {
+export interface ClarkInputs extends BaseCountyInputs {
   // Placeholder inputs - to be defined when implementing
-  [key: string]: string;
+  [key: string]: string | string[] | boolean | undefined;
 }
 
 // API request/response types

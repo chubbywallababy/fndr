@@ -77,6 +77,8 @@ export async function processFayette(inputs: FayetteInputs): Promise<FayetteResu
         // Extract addresses directly from URL using the utility function
         const addresses = await parseAddressesFromUrl(pdfUrl, id, {
           ignoreAddresses: inputs.ignoreAddresses,
+          savePdfs: inputs.savePdfs,
+          pdfOutputDir: inputs.pdfOutputDir,
           axiosConfig: {
             headers: {
               'User-Agent': 'Mozilla/5.0',

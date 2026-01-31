@@ -10,7 +10,10 @@ import { fromPath } from 'pdf2pic';
 import path from 'path';
 import os from 'os';
 
-export interface AddressParserOptions {
+import { PdfProcessingOptions } from '../types';
+import { handlePdfAfterProcessing } from './pdf-storage';
+
+export interface AddressParserOptions extends PdfProcessingOptions {
   ignoreAddresses?: string[];
   axiosConfig?: AxiosRequestConfig;
   forceOCR?: boolean;
@@ -312,17 +315,21 @@ export async function parseAddressesFromUrl(
     const filtered = filterIgnoredAddresses(addresses, options.ignoreAddresses?.map(scoreAddressCandidate));
     console.log(`Returning ${filtered.length} addresses after filtering`);
     
+    // Handle PDF after processing (save or cleanup based on options)
+    handlePdfAfterProcessing(pdfPath, id, options);
+    
     return filtered;
   } catch (error) {
+    // Clean up on error (don't save failed PDFs)
+    try {
+      if (fs.existsSync(pdfPath)) {
+        fs.unlinkSync(pdfPath);
+      }
+    } catch (cleanupError) {
+      console.warn(`Failed to clean up PDF file ${pdfPath}:`, cleanupError);
+    }
     console.error(`Failed to parse PDF from URL ${url}:`, error);
     throw new Error(`Failed to parse PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  } finally {
-    // Optionally clean up the PDF file
-    try {
-      fs.unlinkSync(pdfPath);
-    } catch (error) {
-      console.warn(`Failed to clean up PDF file ${pdfPath}:`, error);
-    }
   }
 }
 

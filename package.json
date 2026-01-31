@@ -15,6 +15,7 @@
     "build:netlify": "npm run build:frontend && npm run build:backend",
     "dev:netlify": "netlify dev",
     "cron": "node dist/cron.js",
+    "cron:save-pdfs": "node dist/cron.js --save-pdfs",
     "deploy:cron": "npm run build:cron && ./scripts/deploy-cron.sh",
     "setup:server": "./scripts/setup-server.sh"
   },
