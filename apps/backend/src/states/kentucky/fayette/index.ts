@@ -1,12 +1,17 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
-import { parseAddressesFromUrl, ParsedAddress } from '../../../utils/address-parser';
 import { FayetteInputs } from '../../../types';
+import { readPdfFromUrl, PdfReaderOptions } from '../../../document/pdf-reader';
+import { parseLisPendens, LisPendensParseResult } from '../../../parsers/lis-pendens-parser';
+import { extractAddressesFromText, filterIgnoredAddresses, ParsedAddress } from '../../../parsers/address-parser';
+import { createClassifiedLead, ClassifiedLead } from '../../../classifiers/lead-classifier';
 
 export interface FayetteResult {
   id: string;
-  addresses: ParsedAddress[];
   pdfUrl?: string;
+  lead: ClassifiedLead;
+  // Legacy field for backward compatibility
+  addresses: ParsedAddress[];
 }
 
 const URL_SEARCH = 'https://fayettedeeds.com/landrecords/index.php';
@@ -21,23 +26,59 @@ function buildFormData(inputs: FayetteInputs): string {
     .replace('{END_DATE}', inputs.endDate);
 }
 
+/**
+ * Process a single PDF and return a classified lead
+ */
+async function processPdf(
+  id: string,
+  pdfUrl: string,
+  cookie: string,
+  options: {
+    ignoreAddresses?: string[];
+    savePdfs?: boolean;
+    pdfOutputDir?: string;
+  }
+): Promise<FayetteResult> {
+  // Read PDF and extract text
+  const pdfOptions: PdfReaderOptions = {
+    savePdfs: options.savePdfs,
+    pdfOutputDir: options.pdfOutputDir,
+    axiosConfig: {
+      headers: {
+        'User-Agent': 'Mozilla/5.0',
+        Referer: 'https://fayettedeeds.com/landrecords/index.php',
+        Cookie: cookie,
+      },
+    },
+  };
+
+  const { text } = await readPdfFromUrl(pdfUrl, id, pdfOptions);
+
+  // Parse the Lis Pendens document
+  const parseResult: LisPendensParseResult = parseLisPendens(text);
+
+  // Filter ignored addresses
+  const filteredAddresses = filterIgnoredAddresses(
+    parseResult.allAddresses,
+    options.ignoreAddresses
+  );
+
+  // Create classified lead
+  const lead = createClassifiedLead(id, pdfUrl, {
+    ...parseResult,
+    allAddresses: filteredAddresses,
+  });
+
+  return {
+    id,
+    pdfUrl,
+    lead,
+    addresses: filteredAddresses,
+  };
+}
+
 export async function processFayette(inputs: FayetteInputs): Promise<FayetteResult[]> {
-  const results: /* `FayetteResult` is defining an interface in TypeScript that specifies the structure
-  of the result object returned by the `processFayette` function. It includes the
-  following properties:
-  - `id`: a string representing the unique identifier of the result
-  - `addresses`: an array of strings representing addresses extracted from the PDF
-  associated with the result
-  - `pdfUrl` (optional): a string representing the URL of the PDF associated with the
-  result */
-  /* `FayetteResult` is defining the structure of the result object that will be
-  returned by the `processFayette` function. It includes the following properties:
-  - `id`: A string representing the unique identifier of the result.
-  - `addresses`: An array of strings representing the addresses extracted from the
-  PDF associated with the result.
-  - `pdfUrl`: An optional string representing the URL of the PDF associated with the
-  result. */
-  FayetteResult[] = [];
+  const results: FayetteResult[] = [];
   const cookie = inputs.cookie || DEFAULT_COOKIE;
   const formData = buildFormData(inputs);
 
@@ -56,7 +97,7 @@ export async function processFayette(inputs: FayetteInputs): Promise<FayetteResu
     const $ = cheerio.load(searchResp.data);
     const rows = $('#results tbody tr');
 
-    console.log(`Found ${rows.length} rows in the table.`);
+    console.log(`[fayette] Found ${rows.length} rows in the table.`);
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
@@ -65,7 +106,7 @@ export async function processFayette(inputs: FayetteInputs): Promise<FayetteResu
 
       const pdfLink = $(row).find('a[href*="type=pdf"]').attr('href');
       if (!pdfLink) {
-        console.log(`No PDF found for ${id}`);
+        console.log(`[fayette] No PDF found for ${id}`);
         continue;
       }
 
@@ -74,33 +115,31 @@ export async function processFayette(inputs: FayetteInputs): Promise<FayetteResu
         : new URL(pdfLink, 'https://fayettedeeds.com/landrecords/').href;
 
       try {
-        // Extract addresses directly from URL using the utility function
-        const addresses = await parseAddressesFromUrl(pdfUrl, id, {
+        const result = await processPdf(id, pdfUrl, cookie, {
           ignoreAddresses: inputs.ignoreAddresses,
           savePdfs: inputs.savePdfs,
           pdfOutputDir: inputs.pdfOutputDir,
-          axiosConfig: {
-            headers: {
-              'User-Agent': 'Mozilla/5.0',
-              Referer: 'https://fayettedeeds.com/landrecords/index.php',
-              Cookie: cookie,
-            },
-          },
         });
-        
-        results.push({
-          id,
-          addresses,
-          pdfUrl,
-        });
+
+        results.push(result);
+
+        // Log classification result
+        const { lead } = result;
+        console.log(`[fayette] ${id}: ${lead.classification.overallScore.toUpperCase()} - ` +
+          `Plaintiff: ${lead.plaintiff.name} (${lead.plaintiff.type}), ` +
+          `Defendant: ${lead.defendant.name} (${lead.defendant.type})`);
+
+        if (lead.classification.stopReason) {
+          console.log(`[fayette] ${id}: STOPPED - ${lead.classification.stopReason}`);
+        }
       } catch (err: any) {
-        console.error(`Failed to parse PDF for ${id}:`, err.response?.status, err.response?.statusText, err.message);
+        console.error(`[fayette] Failed to parse PDF for ${id}:`, err.response?.status, err.response?.statusText, err.message);
       }
     }
 
     return results;
   } catch (err: any) {
-    console.error('Search request failed:', err.response?.status, err.response?.statusText, err.message);
+    console.error('[fayette] Search request failed:', err.response?.status, err.response?.statusText, err.message);
     throw err;
   }
 }

@@ -1,6 +1,47 @@
 // Shared types for backend inputs and configurations
 // This library can be imported by both frontend and backend
 
+// ============================================================
+// Re-export types from modules
+// ============================================================
+
+// Parser types
+export type {
+  ParsedAddress,
+  AddressQuality,
+} from '../parsers/address-parser';
+
+export type {
+  PlaintiffInfo,
+  DefendantInfo,
+  PlaintiffType,
+  DefendantType,
+  LisPendensParseResult,
+} from '../parsers/lis-pendens-parser';
+
+// Classifier types
+export type {
+  LeadClassification,
+  ClassifiedLead,
+  LookupLinks,
+  LevelScore,
+  OverallScore,
+  Level1Result,
+  Level2Result,
+  Level3Result,
+  Level4Result,
+} from '../classifiers/lead-classifier';
+
+// Document types
+export type {
+  PdfReaderOptions,
+  PdfReadResult,
+} from '../document/pdf-reader';
+
+// ============================================================
+// Core types
+// ============================================================
+
 // County identifier types
 export type CountyId = 'fayette-ky' | 'clark-nv';
 

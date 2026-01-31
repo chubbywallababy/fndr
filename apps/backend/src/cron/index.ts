@@ -1,7 +1,8 @@
 // apps/backend/src/cron/run-email-scan.ts
 import 'dotenv/config';
 import { processFayette } from '../states/kentucky/fayette';
-import { publishToSlack } from '../notifications/slack';
+import { publishLeadReport, publishToSlack } from '../notifications/slack';
+import { ClassifiedLead } from '../classifiers/lead-classifier';
 
 /**
  * Parses command line arguments
@@ -49,42 +50,25 @@ async function main() {
 
   console.log(`[cron] Scan complete. Found ${results.length} items`);
 
-  const allAddresses = results.flatMap((result) => result.addresses);
+  // Extract classified leads from results
+  const leads: ClassifiedLead[] = results.map(r => r.lead);
 
-  // Group by quality
+  // Group and log summary
   const grouped = {
-    high: allAddresses.filter(a => a.quality === "high"),
-    medium: allAddresses.filter(a => a.quality === "medium"),
-    low: allAddresses.filter(a => a.quality === "low"),
+    good: leads.filter(l => l.classification.overallScore === 'good'),
+    review: leads.filter(l => l.classification.overallScore === 'review'),
+    bad: leads.filter(l => l.classification.overallScore === 'bad'),
   };
-  
-  // Build markdown with section headers
-  const markdown = `
-  *High quality addresses (${grouped.high.length})*
-  ${grouped.high.map(a => `• ${a.cleaned}`).join("\n")}
-  
-  *Medium quality addresses (${grouped.medium.length})*
-  ${grouped.medium.map(a => `• ${a.cleaned}`).join("\n")}
-  
-  *Low quality / needs review (${grouped.low.length})*
-  ${grouped.low.map(a => `• ${a.cleaned}`).join("\n")}
-  `.trim();
 
-  await publishToSlack({
-    text: markdown,
-    blocks: [
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: markdown,
-        },
-      },
-    ],
-  });
+  console.log(`[cron] Classification summary:`);
+  console.log(`[cron]   Good leads: ${grouped.good.length}`);
+  console.log(`[cron]   Needs review: ${grouped.review.length}`);
+  console.log(`[cron]   Filtered out: ${grouped.bad.length}`);
+
+  // Publish to Slack using the new lead report format
+  await publishLeadReport(leads);
   
   console.log(`[cron] Notification sent to Slack`);
-
 }
 
 main()
