@@ -59,6 +59,36 @@ export interface LeadClassification {
   concerns: string[];
 }
 
+export interface PvaData {
+  // Sale history
+  lastSaleDate: Date | null;
+  lastSalePrice: number | null;
+  yearsOwned: number | null;
+  
+  // Assessed values
+  assessedValue: number | null;
+  landValue: number | null;
+  improvementValue: number | null;
+  
+  // Property characteristics
+  bedrooms: number | null;
+  bathrooms: number | null;
+  squareFeet: number | null;
+  yearBuilt: number | null;
+  propertyType: string | null;
+  
+  // Owner info from PVA
+  ownerName: string | null;
+  ownerAddress: string | null;
+  
+  // Calculated
+  estimatedEquity: number | null;
+  
+  // Meta
+  pvaUrl: string | null;
+  scrapedAt: Date;
+}
+
 export interface ClassifiedLead {
   id: string;
   pdfUrl?: string;
@@ -68,6 +98,7 @@ export interface ClassifiedLead {
   defendant: DefendantInfo;
   classification: LeadClassification;
   lookupLinks: LookupLinks;
+  pvaData?: PvaData;
   rawText?: string;
 }
 
@@ -75,6 +106,8 @@ export interface LookupLinks {
   pva: string;
   zillow: string;
   googleMaps: string;
+  truePeopleSearch: string;
+  fastPeopleSearch: string;
 }
 
 /* ============================================================
@@ -84,23 +117,41 @@ export interface LookupLinks {
 const FAYETTE_PVA_BASE = 'https://fayettepva.com/property-search';
 const ZILLOW_BASE = 'https://www.zillow.com/homes';
 const GOOGLE_MAPS_BASE = 'https://www.google.com/maps/search';
+const TRUE_PEOPLE_SEARCH_BASE = 'https://www.truepeoplesearch.com/results';
+const FAST_PEOPLE_SEARCH_BASE = 'https://www.fastpeoplesearch.com/name';
 
 /**
  * Generates lookup links for external data sources
+ * Only uses address for links when quality is high or medium
+ * Falls back to defendant name for low-quality or missing addresses
  */
 export function generateLookupLinks(
   address: ParsedAddress | null,
   defendantName: string
 ): LookupLinks {
   const encodedName = encodeURIComponent(defendantName);
-  const encodedAddress = address 
+  
+  // Only use address for links if quality is high or medium
+  const useAddress = address && (address.quality === 'high' || address.quality === 'medium');
+  const encodedAddress = useAddress 
     ? encodeURIComponent(address.cleaned)
     : '';
   
+  // Extract city from address for people search (use address even if low quality for city extraction)
+  const cityMatch = address?.cleaned.match(/,\s*([A-Za-z\s]+),\s*[A-Z]{2}/);
+  const city = cityMatch ? cityMatch[1].trim() : 'Lexington';
+  const cityStateZip = address?.cleaned.match(/([A-Za-z\s]+,\s*[A-Z]{2}\s*\d{5})/)?.[1] || `${city}, KY`;
+  
+  // Format name for people search (typically "firstname-lastname")
+  const nameParts = defendantName.split(/[\s,]+/).filter(p => p.length > 1);
+  const formattedNameForFast = nameParts.join('-').toLowerCase();
+  
   return {
     pva: `${FAYETTE_PVA_BASE}?owner=${encodedName}`,
-    zillow: address ? `${ZILLOW_BASE}/${encodedAddress}_rb/` : `${ZILLOW_BASE}/?searchQueryState={"usersSearchTerm":"${encodedName}"}`,
-    googleMaps: address ? `${GOOGLE_MAPS_BASE}/${encodedAddress}` : `${GOOGLE_MAPS_BASE}/${encodedName}`,
+    zillow: useAddress ? `${ZILLOW_BASE}/${encodedAddress}_rb/` : `${ZILLOW_BASE}/?searchQueryState={"usersSearchTerm":"${encodedName}"}`,
+    googleMaps: useAddress ? `${GOOGLE_MAPS_BASE}/${encodedAddress}` : `${GOOGLE_MAPS_BASE}/${encodedName}`,
+    truePeopleSearch: `${TRUE_PEOPLE_SEARCH_BASE}?name=${encodedName}&citystatezip=${encodeURIComponent(cityStateZip)}`,
+    fastPeopleSearch: `${FAST_PEOPLE_SEARCH_BASE}/${formattedNameForFast}_${city.toLowerCase().replace(/\s+/g, '-')}-ky`,
   };
 }
 
@@ -383,7 +434,8 @@ export function createClassifiedLead(
     bedCount?: number;
     bathCount?: number;
   },
-  includeRawText = false
+  includeRawText = false,
+  pvaData?: PvaData
 ): ClassifiedLead {
   const classification = classifyLead(parseResult, externalData);
   const lookupLinks = generateLookupLinks(
@@ -400,6 +452,36 @@ export function createClassifiedLead(
     defendant: parseResult.defendant,
     classification,
     lookupLinks,
+    pvaData,
     rawText: includeRawText ? parseResult.rawText : undefined,
   };
+}
+
+/**
+ * Creates a classified lead with PVA data integration
+ * This is the preferred method when PVA scraping is enabled
+ */
+export function createClassifiedLeadWithPva(
+  id: string,
+  pdfUrl: string | undefined,
+  parseResult: LisPendensParseResult,
+  pvaData: PvaData,
+  includeRawText = false
+): ClassifiedLead {
+  // Use PVA data for classification
+  const externalData = {
+    purchaseDate: pvaData.lastSaleDate || undefined,
+    bedCount: pvaData.bedrooms || undefined,
+    bathCount: pvaData.bathrooms || undefined,
+    // neighborhoodGrade would come from Zillow - not available from PVA
+  };
+  
+  return createClassifiedLead(
+    id,
+    pdfUrl,
+    parseResult,
+    externalData,
+    includeRawText,
+    pvaData
+  );
 }

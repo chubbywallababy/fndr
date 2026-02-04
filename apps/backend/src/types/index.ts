@@ -24,6 +24,7 @@ export type {
   LeadClassification,
   ClassifiedLead,
   LookupLinks,
+  PvaData,
   LevelScore,
   OverallScore,
   Level1Result,
@@ -90,6 +91,8 @@ export interface FayetteInputs extends BaseCountyInputs {
   startDate: string; // Format: MM/DD/YYYY
   endDate: string; // Format: MM/DD/YYYY
   cookie?: string; // Optional session cookie
+  /** Enable PVA scraping to fetch property data (purchase date, price, equity estimate) */
+  enablePvaScraping?: boolean;
 }
 
 export interface ClarkInputs extends BaseCountyInputs {

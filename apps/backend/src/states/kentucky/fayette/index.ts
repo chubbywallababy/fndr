@@ -3,8 +3,9 @@ import * as cheerio from 'cheerio';
 import { FayetteInputs } from '../../../types';
 import { readPdfFromUrl, PdfReaderOptions } from '../../../document/pdf-reader';
 import { parseLisPendens, LisPendensParseResult } from '../../../parsers/lis-pendens-parser';
-import { extractAddressesFromText, filterIgnoredAddresses, ParsedAddress } from '../../../parsers/address-parser';
-import { createClassifiedLead, ClassifiedLead } from '../../../classifiers/lead-classifier';
+import { filterIgnoredAddresses, ParsedAddress } from '../../../parsers/address-parser';
+import { createClassifiedLead, createClassifiedLeadWithPva, ClassifiedLead, PvaData } from '../../../classifiers/lead-classifier';
+import { scrapePvaByAddress, scrapePvaByOwner, closeBrowser, PvaPropertyData } from '../../../scrapers/fayette-pva';
 
 export interface FayetteResult {
   id: string;
@@ -12,6 +13,30 @@ export interface FayetteResult {
   lead: ClassifiedLead;
   // Legacy field for backward compatibility
   addresses: ParsedAddress[];
+}
+
+/**
+ * Convert PvaPropertyData from scraper to PvaData for classifier
+ */
+function convertPvaData(scraperData: PvaPropertyData): PvaData {
+  return {
+    lastSaleDate: scraperData.lastSaleDate,
+    lastSalePrice: scraperData.lastSalePrice,
+    yearsOwned: scraperData.yearsOwned,
+    assessedValue: scraperData.assessedValue,
+    landValue: scraperData.landValue,
+    improvementValue: scraperData.improvementValue,
+    bedrooms: scraperData.bedrooms,
+    bathrooms: scraperData.bathrooms,
+    squareFeet: scraperData.squareFeet,
+    yearBuilt: scraperData.yearBuilt,
+    propertyType: scraperData.propertyType,
+    ownerName: scraperData.ownerName,
+    ownerAddress: scraperData.ownerAddress,
+    estimatedEquity: scraperData.estimatedEquity,
+    pvaUrl: scraperData.pvaUrl,
+    scrapedAt: scraperData.scrapedAt,
+  };
 }
 
 const URL_SEARCH = 'https://fayettedeeds.com/landrecords/index.php';
@@ -37,6 +62,7 @@ async function processPdf(
     ignoreAddresses?: string[];
     savePdfs?: boolean;
     pdfOutputDir?: string;
+    enablePvaScraping?: boolean;
   }
 ): Promise<FayetteResult> {
   // Read PDF and extract text
@@ -63,11 +89,55 @@ async function processPdf(
     options.ignoreAddresses
   );
 
-  // Create classified lead
-  const lead = createClassifiedLead(id, pdfUrl, {
+  const parseResultWithFiltered = {
     ...parseResult,
     allAddresses: filteredAddresses,
-  });
+  };
+
+  let lead: ClassifiedLead;
+
+  // Optionally scrape PVA for property data
+  if (options.enablePvaScraping) {
+    let pvaData: PvaPropertyData | null = null;
+
+    try {
+      // Try by address first if available
+      if (parseResult.propertyAddress?.cleaned) {
+        console.log(`[fayette] Scraping PVA for address: ${parseResult.propertyAddress.cleaned}`);
+        pvaData = await scrapePvaByAddress(parseResult.propertyAddress.cleaned, { 
+          headless: true,
+          debug: false,
+        });
+      }
+      
+      // If no data from address, try by owner name
+      if (!pvaData?.lastSaleDate && parseResult.defendant.name) {
+        console.log(`[fayette] Scraping PVA for owner: ${parseResult.defendant.name}`);
+        pvaData = await scrapePvaByOwner(parseResult.defendant.name, { 
+          headless: true,
+          debug: false,
+        });
+      }
+    } catch (err: any) {
+      console.warn(`[fayette] PVA scraping failed for ${id}:`, err.message);
+    }
+
+    if (pvaData) {
+      // Log PVA data found
+      if (pvaData.lastSaleDate || pvaData.assessedValue) {
+        console.log(`[fayette] ${id} PVA data: Sale ${pvaData.lastSaleDate?.toLocaleDateString() || 'N/A'}, ` +
+          `Price $${pvaData.lastSalePrice?.toLocaleString() || 'N/A'}, ` +
+          `${pvaData.yearsOwned?.toFixed(1) || '?'} years owned, ` +
+          `Est. equity $${pvaData.estimatedEquity?.toLocaleString() || 'N/A'}`);
+      }
+
+      lead = createClassifiedLeadWithPva(id, pdfUrl, parseResultWithFiltered, convertPvaData(pvaData));
+    } else {
+      lead = createClassifiedLead(id, pdfUrl, parseResultWithFiltered);
+    }
+  } else {
+    lead = createClassifiedLead(id, pdfUrl, parseResultWithFiltered);
+  }
 
   return {
     id,
@@ -81,6 +151,11 @@ export async function processFayette(inputs: FayetteInputs): Promise<FayetteResu
   const results: FayetteResult[] = [];
   const cookie = inputs.cookie || DEFAULT_COOKIE;
   const formData = buildFormData(inputs);
+  const enablePvaScraping = inputs.enablePvaScraping ?? false;
+
+  if (enablePvaScraping) {
+    console.log('[fayette] PVA scraping enabled - will fetch property data for each lead');
+  }
 
   try {
     // Step 1: Send search POST request
@@ -119,6 +194,7 @@ export async function processFayette(inputs: FayetteInputs): Promise<FayetteResu
           ignoreAddresses: inputs.ignoreAddresses,
           savePdfs: inputs.savePdfs,
           pdfOutputDir: inputs.pdfOutputDir,
+          enablePvaScraping,
         });
 
         results.push(result);
@@ -132,6 +208,12 @@ export async function processFayette(inputs: FayetteInputs): Promise<FayetteResu
         if (lead.classification.stopReason) {
           console.log(`[fayette] ${id}: STOPPED - ${lead.classification.stopReason}`);
         }
+
+        // Log PVA summary if available
+        if (lead.pvaData?.estimatedEquity) {
+          console.log(`[fayette] ${id}: Est. equity $${lead.pvaData.estimatedEquity.toLocaleString()}, ` +
+            `${lead.pvaData.yearsOwned?.toFixed(1) || '?'} years owned`);
+        }
       } catch (err: any) {
         console.error(`[fayette] Failed to parse PDF for ${id}:`, err.response?.status, err.response?.statusText, err.message);
       }
@@ -141,5 +223,10 @@ export async function processFayette(inputs: FayetteInputs): Promise<FayetteResu
   } catch (err: any) {
     console.error('[fayette] Search request failed:', err.response?.status, err.response?.statusText, err.message);
     throw err;
+  } finally {
+    // Close browser if PVA scraping was enabled
+    if (enablePvaScraping) {
+      await closeBrowser();
+    }
   }
 }

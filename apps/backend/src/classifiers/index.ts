@@ -6,10 +6,12 @@
 export {
   classifyLead,
   createClassifiedLead,
+  createClassifiedLeadWithPva,
   generateLookupLinks,
   LeadClassification,
   ClassifiedLead,
   LookupLinks,
+  PvaData,
   LevelScore,
   OverallScore,
   Level1Result,
